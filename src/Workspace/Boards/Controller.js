@@ -36,4 +36,33 @@ async function createBoard(req, res) {
     }
 }
 
-module.exports = { createBoard };
+
+async function getAllBoard(req, res) {
+    try {
+        // 🔐 userId dari JWT
+        const userId = req.user.id;
+
+        // Ambil semua board milik user
+        const boards = await Board.find({ userId }).sort({ createdAt: -1 });
+
+        res.status(200).json({
+            message: "Berhasil mengambil board",
+            data: boards,
+        });
+
+    } catch (error) {
+        console.error("GET ALL BOARD ERROR:", error);
+        res.status(500).json({
+            errors: {
+                general: "Terjadi kesalahan server",
+            },
+        });
+    }
+}
+
+
+
+module.exports = { 
+    createBoard,
+    getAllBoard
+};
