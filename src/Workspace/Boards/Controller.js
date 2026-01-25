@@ -1,12 +1,11 @@
 const Board = require("../../Models/Board");
+const User = require("../../Models/User");
 
 async function createBoard(req, res) {
-    try {
-        // 🔐 userId dari JWT (di-set oleh auth middleware)
+    try { 
         const userId = req.user.id;
-        const { name } = req.body;
+        const { name, type = "my", members = [] } = req.body;
 
-        // VALIDASI
         if (!name || name.trim() === "") {
             return res.status(400).json({
                 errors: {
@@ -15,10 +14,11 @@ async function createBoard(req, res) {
             });
         }
 
-        // CREATE BOARD
         const board = await Board.create({
             name: name.trim(),
             userId,
+            type,
+            members: type === "team" ? members : [],
         });
 
         res.status(201).json({
@@ -37,14 +37,13 @@ async function createBoard(req, res) {
 }
 
 
-async function getAllBoard(req, res) {
+async function getAllMyBoards(req, res) {
     try {
-        // 🔐 userId dari JWT
         const userId = req.user.id;
 
-        // Ambil semua board milik user
         const boards = await Board.find({
             userId,
+            type: "my",
             isDeleted: false,
         }).sort({ createdAt: -1 });
 
@@ -63,16 +62,38 @@ async function getAllBoard(req, res) {
     }
 }
 
+async function getAllTeamBoards(req, res) {
+    try {
+        const userId = req.user.id;
+
+        const boards = await Board.find({
+        type: "team",
+        isDeleted: false,
+        $or: [
+            { userId },          
+            { members: userId } 
+        ],
+        }).sort({ createdAt: -1 });
+
+        res.status(200).json({
+        message: "Berhasil mengambil team board",
+        data: boards,
+        });
+
+    } catch (error) {
+        console.error("GET TEAM BOARD ERROR:", error);
+        res.status(500).json({
+        errors: {
+            general: "Terjadi kesalahan server",
+        },
+        });
+    }
+}
 
 async function updateBoard(req, res){
     try{
-        // ambil userId dari JWT
         const userId = req.user.id;
-
-        // ambil boardId dari URL
         const { id } = req.params;
-
-         // ambil nama baru
         const { name } = req.body;
 
         if(!name || name.trim() === ""){
@@ -85,8 +106,6 @@ async function updateBoard(req, res){
 
         const board = await Board.findOneAndUpdate(
             { _id: id, userId, isDeleted: false},
-            { name: name.trim() },
-            { new: true }
         );
 
         if(!board){
@@ -96,6 +115,19 @@ async function updateBoard(req, res){
                 },
             });
         }
+
+        const trimedName = name.trim();
+
+        if(board.name === trimedName){
+            return res.status(400).json({
+                errors: {
+                    name: "Nama board tidak berubah"
+                },
+            });
+        }
+
+        board.name = trimedName;
+        await board.save();
 
         res.status(200).json({
             message: "Board berhasil diupdate",
@@ -143,9 +175,47 @@ async function deleteBoard(req, res){
     }
 }
 
+async function searchUsersByEmail(req, res){
+    try {
+        const userId = req.user.id;
+        const { q } = req.query;
+
+        if (!q || q.trim() === "") {
+            return res.status(200).json({
+                data: [],
+            });
+        }
+
+        const users = await User.find({
+            _id: { $ne: userId },
+            $or: [
+                    { email: { $regex: q, $options: "i" } },
+                    { name: { $regex: q, $options: "i" } },
+                ],
+        })
+        .select("_id name email")
+        .limit(10);
+
+        res.status(200).json({
+            message: "Berhasil mencari user",
+            data: users,
+        });
+
+    } catch (error) {
+        console.error("SEARCH USER ERROR:", error);
+        res.status(500).json({
+            errors: {
+                general: "Terjadi kesalahan server",
+            },
+        });
+    }
+}
+
 module.exports = { 
     createBoard,
-    getAllBoard,
+    getAllMyBoards,
+    getAllTeamBoards,
     updateBoard,
-    deleteBoard
+    deleteBoard,
+    searchUsersByEmail,
 };
